@@ -5,6 +5,7 @@ from px4_msgs.msg import OffboardControlMode, VehicleCommand, VehicleLocalPositi
 from px4_msgs.msg import TrajectorySetpoint, TrajectoryBezier, VehicleTrajectoryBezier
 
 from px4_offboard.path_planner_base import PathPlanner
+import numpy as np
 
 
 
@@ -45,9 +46,14 @@ class Demo(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -1.0
         self.planner = PathPlanner()
+        
+        self.dt = 0.1
+        self.omega = 2
+        self.radius = 2
+        self.theta = 0.0
 
         # Create a timer to publish control commands
-        self.timer = self.create_timer(0.1, self.timer_callback)
+        self.timer = self.create_timer(self.dt, self.timer_callback)
 
     def vehicle_local_position_callback(self, vehicle_local_position):
         """Callback function for vehicle_local_position topic subscriber."""
@@ -89,7 +95,6 @@ class Demo(Node):
         msg.attitude = False
         msg.body_rate = False
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        msg.
         self.offboard_control_mode_publisher.publish(msg)
 
     def publish_position_setpoint(self, x: float, y: float, z: float):
@@ -100,25 +105,6 @@ class Demo(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
         self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
-
-    def publish_position_bezier(self,control_points, delta):
-        """Publish the bezier trajectory."""
-        msg = VehicleTrajectoryBezier()
-        traj = []
-
-        for i in range(5):
-            point = TrajectoryBezier()
-            point.delta = delta
-            point.position = control_points[i]
-            point.yaw = 1.57079  # (90 degree)
-            traj.append(point)
-
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        msg.bezier_order = len(traj)-1
-        msg.control_points = traj
-        
-        self.trajectory_bezier_publisher.publish(msg)
-        self.get_logger().info(f"Publishing position bezier trajectory")
 
     def publish_vehicle_command(self, command, **params) -> None:
         """Publish a vehicle command."""
@@ -154,18 +140,13 @@ class Demo(Node):
             
         if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.vehicle_local_position.z > self.takeoff_height:
             self.publish_position_setpoint(0.0, 0.0, self.takeoff_height-.1)
-        
-        if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.vehicle_local_position.z < self.takeoff_height:
-            delta=1.0
-            self.plan_path()
-            points = [
-                [3.0,0.0,-2.0],
-                [3.0,0.049,-2.5],
-                [3.0,0.049,-2.5],
-                [3.0,0.049,-2.5],
-                [3.0,0.049,-2.5]
-            ]
-            self.publish_position_bezier(points,delta)
+
+        if self.vehicle_local_position.z<self.takeoff_height:
+            x = self.radius * np.cos(self.theta)
+            y = self.radius * np.sin(self.theta)
+            z = -2.0
+            self.publish_position_setpoint(x, y, z)
+            self.theta = self.theta + self.omega * self.dt
 
         elif self.done:
             self.land()
