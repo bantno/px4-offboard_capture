@@ -28,8 +28,8 @@ class PathPlanner:
         self.problem.setOptimizationObjective(ob.PathLengthOptimizationObjective(self.si))
         self.planner = og.RRTstar(self.si)
         self.planner.setProblemDefinition(self.problem)
-        self.planner.setRange(2.0)
-        self.planner.setGoalBias(0.05)
+        self.planner.setRange(1.0)
+        self.planner.setGoalBias(0.1)
         self.planner.setup()
 
     def set_random_start_and_goal(self):
@@ -38,7 +38,7 @@ class PathPlanner:
             self.goal[i] = random.uniform(self.bounds.low[i], self.bounds.high[i])
         self.goal_above[0] = self.goal[0]
         self.goal_above[1] = self.goal[1]
-        self.goal_above[2] = self.goal[2] + 0.75
+        self.goal_above[2] = self.goal[2] - 0.75
         self.problem.setStartAndGoalStates(self.start, self.goal_above)
         self.obstacles.append((self.goal[0], self.goal[1], self.goal[2], 0.25))
 
@@ -48,7 +48,7 @@ class PathPlanner:
             self.goal[i] = goal[i]
         self.goal_above[0] = self.goal[0]
         self.goal_above[1] = self.goal[1]
-        self.goal_above[2] = self.goal[2] + 0.75
+        self.goal_above[2] = self.goal[2] - 0.75
         self.problem.setStartAndGoalStates(self.start, self.goal_above)
         self.obstacles = [(self.goal[0], self.goal[1], self.goal[2], 0.25)]
 
@@ -61,7 +61,7 @@ class PathPlanner:
 
     def isPathValid(self, path):
         last_state = path.getState(path.getStateCount() - 1)
-        return last_state[2] > self.goal[2]
+        return last_state[2] < self.goal[2]
 
     def compute_bezier_points(self, p0, p1, p2, p3, num_samples=100):
         t = np.linspace(0, 1, num_samples).reshape(num_samples, 1)
@@ -146,7 +146,7 @@ class PathPlanner:
 
 if __name__ == "__main__":
     planner = PathPlanner()
-    planner.set_start_and_goal(start=[0.0,0.0,0.0], goal=[1.0,1.0,1.0])
+    planner.set_start_and_goal(start=[0.0,0.0,0.0], goal=[1.0,1.0,-1.0])
     # planner.set_random_start_and_goal()
-    planner.solve(plot=False)
+    planner.solve(plot=True)
     print(planner.path)
