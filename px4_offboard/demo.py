@@ -47,13 +47,14 @@ class Demo(Node):
         self.takeoff_height = -1.0
         self.planner = PathPlanner()
         
-        self.dt = 0.1
-        self.omega = 2
-        self.radius = 2
-        self.theta = 0.0
+        self.dt = 0.05
+        self.plan_time = 0.35
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(self.dt, self.timer_callback)
+
+        # Create a timer to plan path
+        self.pan_timer = self.create_timer(self.plan_time,self.plan_callback)
 
     def vehicle_local_position_callback(self, vehicle_local_position):
         """Callback function for vehicle_local_position topic subscriber."""
@@ -63,7 +64,13 @@ class Demo(Node):
         """Callback function for vehicle_status topic subscriber."""
         self.vehicle_status = vehicle_status
 
-    def servo(self,pos):
+    def plan_callback(self):
+        self.planner.set_start_and_goal(
+            start=[self.vehicle_local_position.x,self.vehicle_local_position.y,self.vehicle_local_position.z],
+              goal=[1.0,1.0,-2.0])
+        self.planner.solve(plot=False)
+
+    def servo_set(self,pos):
         """Send an arm command to the vehicle."""
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_DO_SET_ACTUATOR, param1=pos)
@@ -133,7 +140,15 @@ class Demo(Node):
 
     def plan_path(self) -> None:
         """Plan path"""
-        pass
+        #TODO: Repeatedly plan path from current position to target
+        self.planner.set_start_and_goal(
+            start=[self.vehicle_local_position.x,self.vehicle_local_position.y,self.vehicle_local_position.z],
+            goal=[2.0,2.0,-2.0])
+        dist = np.sqrt((self.vehicle_local_position.x+2.0)**2 + (self.vehicle_local_position.y+2.0)**2 + (self.vehicle_local_position.z+2.0)**2)
+        self.planner.setRange(dist)
+        self.planner.setGoalBias(0.1)
+        self.planner.setup()
+        self.planner.solve(time=0.35)
 
 
     def timer_callback(self) -> None:
@@ -146,16 +161,14 @@ class Demo(Node):
             
         if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.vehicle_local_position.z > self.takeoff_height:
             self.publish_position_setpoint(0.0, 0.0, self.takeoff_height-.1)
-            self.servo(-1.0)
+            self.servo_set(-1.0)
 
         if self.vehicle_local_position.z<self.takeoff_height:
-            x = self.radius * np.cos(self.theta)
-            y = self.radius * np.sin(self.theta)
-            z = -2.0
-            self.publish_position_setpoint(x, y, z)
-            self.theta = self.theta + self.omega * self.dt
-            self.servo(1.0)
-
+            # TODO iterate through planned path
+            # x = self.radius * np.cos(self.theta)
+            # y = self.radius * np.sin(self.theta)
+            # z = -2.0
+            # self.publish_position_setpoint(x, y, z)
         elif self.done:
             self.land()
             exit(0)
