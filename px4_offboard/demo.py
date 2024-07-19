@@ -63,6 +63,12 @@ class Demo(Node):
         """Callback function for vehicle_status topic subscriber."""
         self.vehicle_status = vehicle_status
 
+    def servo(self,pos):
+        """Send an arm command to the vehicle."""
+        self.publish_vehicle_command(
+            VehicleCommand.VEHICLE_CMD_DO_SET_ACTUATOR, param1=pos)
+        self.get_logger().info('Servo command sent')
+
     def arm(self):
         """Send an arm command to the vehicle."""
         self.publish_vehicle_command(
@@ -110,7 +116,7 @@ class Demo(Node):
         """Publish a vehicle command."""
         msg = VehicleCommand()
         msg.command = command
-        msg.param1 = params.get("param1", 0.0)
+        msg.param1 = params.get("param1", 1.0)
         msg.param2 = params.get("param2", 0.0)
         msg.param3 = params.get("param3", 0.0)
         msg.param4 = params.get("param4", 0.0)
@@ -140,6 +146,7 @@ class Demo(Node):
             
         if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.vehicle_local_position.z > self.takeoff_height:
             self.publish_position_setpoint(0.0, 0.0, self.takeoff_height-.1)
+            self.servo(-1.0)
 
         if self.vehicle_local_position.z<self.takeoff_height:
             x = self.radius * np.cos(self.theta)
@@ -147,6 +154,7 @@ class Demo(Node):
             z = -2.0
             self.publish_position_setpoint(x, y, z)
             self.theta = self.theta + self.omega * self.dt
+            self.servo(1.0)
 
         elif self.done:
             self.land()
