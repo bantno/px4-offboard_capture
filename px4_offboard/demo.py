@@ -25,19 +25,19 @@ class Demo(Node):
 
         # Create publishers
         self.offboard_control_mode_publisher = self.create_publisher(
-            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode, '/px4_1/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, '/px4_1/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+            VehicleCommand, '/px4_1/fmu/in/vehicle_command', qos_profile)
         self.trajectory_bezier_publisher = self.create_publisher(
-            VehicleTrajectoryBezier, '/fmu/in/vehicle_trajectory_bezier', qos_profile)
+            VehicleTrajectoryBezier, '/px4_1/fmu/in/vehicle_trajectory_bezier', qos_profile)
 
         # Create subscribers
         self.vehicle_local_position_subscriber = self.create_subscription(
-            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
+            VehicleLocalPosition, '/px4_1/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
         self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            VehicleStatus, '/px4_1/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
@@ -54,7 +54,7 @@ class Demo(Node):
         self.timer = self.create_timer(self.dt, self.timer_callback)
 
         # Create a timer to plan path
-        self.pan_timer = self.create_timer(self.plan_time,self.plan_callback)
+        # self.plan_timer = self.create_timer(self.plan_time,self.plan_callback)
 
     def vehicle_local_position_callback(self, vehicle_local_position):
         """Callback function for vehicle_local_position topic subscriber."""
@@ -169,6 +169,8 @@ class Demo(Node):
             # y = self.radius * np.sin(self.theta)
             # z = -2.0
             # self.publish_position_setpoint(x, y, z)
+            pass
+
         elif self.done:
             self.land()
             exit(0)
