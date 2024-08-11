@@ -22,22 +22,24 @@ class Demo(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
+        
+        prefix = '/px4_1'
 
         # Create publishers
         self.offboard_control_mode_publisher = self.create_publisher(
-            OffboardControlMode, '/px4_1/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode, prefix+'/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, '/px4_1/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, prefix+'/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand, '/px4_1/fmu/in/vehicle_command', qos_profile)
+            VehicleCommand, prefix+'/fmu/in/vehicle_command', qos_profile)
         self.trajectory_bezier_publisher = self.create_publisher(
-            VehicleTrajectoryBezier, '/px4_1/fmu/in/vehicle_trajectory_bezier', qos_profile)
+            VehicleTrajectoryBezier, prefix+'/fmu/in/vehicle_trajectory_bezier', qos_profile)
 
         # Create subscribers
         self.vehicle_local_position_subscriber = self.create_subscription(
-            VehicleLocalPosition, '/px4_1/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
+            VehicleLocalPosition, prefix+'/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
         self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/px4_1/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            VehicleStatus, prefix+'/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
