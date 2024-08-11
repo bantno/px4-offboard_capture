@@ -4,7 +4,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from px4_msgs.msg import OffboardControlMode, VehicleCommand, VehicleLocalPosition, VehicleStatus
 from px4_msgs.msg import TrajectorySetpoint, TrajectoryBezier, VehicleTrajectoryBezier
 
-from px4_offboard.path_planner_base import PathPlanner
+# from px4_offboard.path_planner_base import PathPlanner
 import numpy as np
 
 
@@ -23,23 +23,29 @@ class Demo(Node):
             depth=1
         )
         
-        prefix = '/px4_1'
+        self_prefix = '/px4_1'
+
+        target_prefix = '/px4_2'
 
         # Create publishers
         self.offboard_control_mode_publisher = self.create_publisher(
-            OffboardControlMode, prefix+'/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode, self_prefix+'/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, prefix+'/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, self_prefix+'/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand, prefix+'/fmu/in/vehicle_command', qos_profile)
+            VehicleCommand, self_prefix+'/fmu/in/vehicle_command', qos_profile)
         self.trajectory_bezier_publisher = self.create_publisher(
-            VehicleTrajectoryBezier, prefix+'/fmu/in/vehicle_trajectory_bezier', qos_profile)
+            VehicleTrajectoryBezier, self_prefix+'/fmu/in/vehicle_trajectory_bezier', qos_profile)
 
         # Create subscribers
         self.vehicle_local_position_subscriber = self.create_subscription(
-            VehicleLocalPosition, prefix+'/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
+            VehicleLocalPosition, self_prefix+'/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
         self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, prefix+'/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            VehicleStatus, self_prefix+'/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+        
+        # Create subscribers
+        self.target_local_position_subscriber = self.create_subscription(
+            VehicleLocalPosition, target_prefix+'/fmu/out/vehicle_local_position', self.target_local_position_callback, qos_profile)
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
@@ -47,31 +53,41 @@ class Demo(Node):
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -1.0
-        self.planner = PathPlanner()
+        self.path_is_valid = False
+        # self.planner = PathPlanner()
+        self.i=0
         
         self.dt = 0.05
-        self.plan_time = 0.35
+        self.plan_time = 5.0
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(self.dt, self.timer_callback)
+
+        # Create timer to publish heartbeat signal
         self.heartbeat_timer = self.create_timer(0.25, self.heartbeat_callback)
 
         # Create a timer to plan path
-        # self.plan_timer = self.create_timer(self.plan_time,self.plan_callback)
+        self.plan_timer = self.create_timer(self.plan_time,self.plan_callback)
 
     def vehicle_local_position_callback(self, vehicle_local_position):
         """Callback function for vehicle_local_position topic subscriber."""
         self.vehicle_local_position = vehicle_local_position
+
+    def target_local_position_callback(self, vehicle_local_position):
+        """Callback function for vehicle_local_position topic subscriber for the target drone."""
+        self.target_local_position = vehicle_local_position
 
     def vehicle_status_callback(self, vehicle_status):
         """Callback function for vehicle_status topic subscriber."""
         self.vehicle_status = vehicle_status
 
     def plan_callback(self):
-        self.planner.set_start_and_goal(
-            start=[self.vehicle_local_position.x,self.vehicle_local_position.y,self.vehicle_local_position.z],
-              goal=[1.0,1.0,-2.0])
-        self.planner.solve(plot=False)
+        """Callback function for periodic planning"""
+        start=[self.vehicle_local_position.x,self.vehicle_local_position.y,self.vehicle_local_position.z]
+        goal=[self.target_local_position.x,self.target_local_position.y,self.target_local_position.z]
+        self.path = self.plan_path(start, goal)
+        self.i=0
+        self.path_is_valid=True
 
     def servo_set(self,pos):
         """Send an arm command to the vehicle."""
@@ -141,17 +157,32 @@ class Demo(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.vehicle_command_publisher.publish(msg)
 
-    def plan_path(self) -> None:
-        """Plan path"""
-        #TODO: Repeatedly plan path from current position to target
-        self.planner.set_start_and_goal(
-            start=[self.vehicle_local_position.x,self.vehicle_local_position.y,self.vehicle_local_position.z],
-            goal=[2.0,2.0,-2.0])
-        dist = np.sqrt((self.vehicle_local_position.x+2.0)**2 + (self.vehicle_local_position.y+2.0)**2 + (self.vehicle_local_position.z+2.0)**2)
-        self.planner.setRange(dist)
-        self.planner.setGoalBias(0.1)
-        self.planner.setup()
-        self.planner.solve(time=0.35)
+    def plan_path(self, start, goal):
+        # Define the intermediate point (half a meter above the goal in the -z direction)
+        intermediate = np.array([goal[0], goal[1], goal[2] - 0.5])
+
+        if np.linalg.norm(np.array(start) - np.array(goal)) <= 1.0 and start[2] < goal[2]-0.5:
+            # Go directly to the goal
+            path = np.array([start, goal])
+
+        else:
+            # Bezier control points: start, intermediate, goal
+            control_points = np.array([start, intermediate, goal])        
+
+            # Function to calculate the Bezier point at t
+            def bezier_point(t, control_points):
+                n = len(control_points) - 1
+                point = np.zeros(3)
+                for i in range(n + 1):
+                    binomial_coeff = np.math.factorial(n) / (np.math.factorial(i) * np.math.factorial(n - i))
+                    point += binomial_coeff * (1 - t)**(n - i) * t**i * control_points[i]
+                return point
+
+            # Generate the Bezier curve points
+            t_values = np.linspace(0, 1, 100)
+            path = np.array([bezier_point(t, control_points) for t in t_values])
+
+        return path
 
 
     def heartbeat_callback(self) -> None:
@@ -169,13 +200,15 @@ class Demo(Node):
             self.publish_position_setpoint(0.0, 0.0, self.takeoff_height-.1)
             self.servo_set(-1.0)
 
-        if self.vehicle_local_position.z<self.takeoff_height:
-            # TODO iterate through planned path
-            # x = self.radius * np.cos(self.theta)
-            # y = self.radius * np.sin(self.theta)
-            # z = -2.0
-            # self.publish_position_setpoint(x, y, z)
-            pass
+        
+        
+        elif self.vehicle_local_position.z<self.takeoff_height and self.path_is_valid:
+            x = self.path[self.i][0]
+            y = self.path[self.i][1]
+            z = self.path[self.i][2]
+            self.publish_position_setpoint(x, y, z)
+            if self.i<len(self.path) :
+                self.i+=1
 
         elif self.done:
             self.land()
