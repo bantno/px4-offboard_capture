@@ -54,6 +54,7 @@ class Demo(Node):
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(self.dt, self.timer_callback)
+        self.heartbeat_timer = self.create_timer(0.25, self.heartbeat_callback)
 
         # Create a timer to plan path
         # self.plan_timer = self.create_timer(self.plan_time,self.plan_callback)
@@ -153,10 +154,13 @@ class Demo(Node):
         self.planner.solve(time=0.35)
 
 
-    def timer_callback(self) -> None:
-        """Callback function for the timer."""
+    def heartbeat_callback(self) -> None:
+        """Publish offboard control heartbeat signal"""
         self.publish_offboard_control_heartbeat_signal()
 
+    def timer_callback(self) -> None:
+        """Callback function for the timer."""
+        
         if self.offboard_setpoint_counter == 10:
             self.arm()
             self.engage_offboard_mode()
