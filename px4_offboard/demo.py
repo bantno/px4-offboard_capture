@@ -23,7 +23,7 @@ class Demo(Node):
             depth=1
         )
         
-        self_prefix = '/px4_1'
+        self_prefix = ''
 
         target_prefix = '/px4_2'
 
@@ -52,13 +52,14 @@ class Demo(Node):
         self.done = False
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
-        self.takeoff_height = -1.0
+        self.takeoff_height = -3.0
         self.path_is_valid = False
+        self.height_reached = False
         # self.planner = PathPlanner()
         self.i=0
         
-        self.dt = 0.05
-        self.plan_time = 5.0
+        self.dt = 0.1
+        self.plan_time = 10.0
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(self.dt, self.timer_callback)
@@ -86,7 +87,6 @@ class Demo(Node):
         start=[self.vehicle_local_position.x,self.vehicle_local_position.y,self.vehicle_local_position.z]
         goal=[self.target_local_position.x,self.target_local_position.y,self.target_local_position.z]
         self.path = self.plan_path(start, goal)
-        self.i=0
         self.path_is_valid=True
 
     def servo_set(self,pos):
@@ -136,7 +136,7 @@ class Demo(Node):
         msg.yaw = 1.57079  # (90 degree)
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
-        self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
+        # self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
 
     def publish_vehicle_command(self, command, **params) -> None:
         """Publish a vehicle command."""
@@ -158,12 +158,15 @@ class Demo(Node):
         self.vehicle_command_publisher.publish(msg)
 
     def plan_path(self, start, goal):
-        # Define the intermediate point (half a meter above the goal in the -z direction)
-        intermediate = np.array([goal[0], goal[1], goal[2] - 0.5])
-
-        if np.linalg.norm(np.array(start) - np.array(goal)) <= 1.0 and start[2] < goal[2]-0.5:
+        # Define the intermediate point
+        intermediate = np.array([goal[0], goal[1], goal[2] - 1.0])
+        is_close = np.sqrt((self.vehicle_local_position.x-goal[0])**2+(self.vehicle_local_position.y-goal[1])**2) <= 0.5
+        is_above = start[2] < goal[2]-0.4
+        if is_close and is_above:
             # Go directly to the goal
-            path = np.array([start, goal])
+            path = np.array([goal])
+            self.i=0
+            self.get_logger().info('Going to target')
 
         else:
             # Bezier control points: start, intermediate, goal
@@ -181,7 +184,8 @@ class Demo(Node):
             # Generate the Bezier curve points
             t_values = np.linspace(0, 1, 100)
             path = np.array([bezier_point(t, control_points) for t in t_values])
-
+            self.i=5
+            self.get_logger().info('Planning path to target')
         return path
 
 
@@ -192,29 +196,39 @@ class Demo(Node):
     def timer_callback(self) -> None:
         """Callback function for the timer."""
         
-        if self.offboard_setpoint_counter == 10:
+        if self.offboard_setpoint_counter == 15:
             self.arm()
             self.engage_offboard_mode()
+        
+        if self.vehicle_local_position.z < self.takeoff_height :
+            self.height_reached = True
+
+        if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and not self.height_reached:
+            self.publish_position_setpoint(self.vehicle_local_position.x,self.vehicle_local_position.y, self.takeoff_height-.1)
             
-        if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.vehicle_local_position.z > self.takeoff_height:
-            self.publish_position_setpoint(0.0, 0.0, self.takeoff_height-.1)
-            self.servo_set(-1.0)
 
         
         
-        elif self.vehicle_local_position.z<self.takeoff_height and self.path_is_valid:
-            x = self.path[self.i][0]
-            y = self.path[self.i][1]
-            z = self.path[self.i][2]
+        elif self.vehicle_local_position.z<-1.0 and self.path_is_valid:
+            if len(self.path) == 1:
+                x = self.path[0][0]
+                y = self.path[0][1]
+                z = self.path[0][2]
+                self.i=0
+                self.servo_set(-1.0)
+            else:
+                x = self.path[self.i][0]
+                y = self.path[self.i][1]
+                z = self.path[self.i][2]
             self.publish_position_setpoint(x, y, z)
-            if self.i<len(self.path) :
+            if self.i<len(self.path)-1 :
                 self.i+=1
 
         elif self.done:
             self.land()
             exit(0)
 
-        if self.offboard_setpoint_counter < 11:
+        if self.offboard_setpoint_counter < 16:
             self.offboard_setpoint_counter += 1
             
 
