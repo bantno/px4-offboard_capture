@@ -28,6 +28,7 @@ setup(
         'console_scripts': [
                 'offboard_control = px4_offboard.offboard_control:main',
                 'demo = px4_offboard.demo:main',
+                'hover = px4_offboard.hover:main',
                 'visualizer = px4_offboard.visualizer:main',
         ],
     },
